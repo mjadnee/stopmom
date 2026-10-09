@@ -1,0 +1,10 @@
+# Generated training artifacts
+SOM_outputs/
+
+# Local acquisition/loading script
+SOM_train_local.py
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
