@@ -1,5 +1,6 @@
 import torch
 import os
+from pathlib import Path
 import numpy as np
 
 from SOM import SOM, load_som, save_som, build_som_grid
@@ -103,4 +104,16 @@ def train_som(topography, data, bias, x, y, data_name="stm_dataset", save_images
 
 
 if __name__ == "__main__":
-    raise SystemExit("Import train_som and pass your STM data arrays. See README.md for the required array shapes.")
+    demo_path = Path(__file__).resolve().parent / "demo_data" / CONFIG.demo_file_name
+    with np.load(demo_path) as demo:
+        topography, data, bias, x, y = (
+            demo[name] for name in ("topography", "data", "bias", "x", "y")
+        )
+        train_som(
+            topography,
+            data,
+            bias,
+            x,
+            y,
+            data_name=demo_path.stem,
+        )

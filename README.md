@@ -1,5 +1,19 @@
 # STM SOM Classifier
 
+## Run the Demo
+
+From the repository directory, run:
+
+```powershell
+python SOM_train.py
+```
+
+This loads `demo_data/demo_stm.npz`, a small synthetic dataset, and trains a
+SOM. The generated checkpoint is written under the ignored `SOM_outputs/`
+directory. Run this once to check that the environment and training path work.
+
+## Use Your Own Data
+
 `SOM_train.py` is independent of any STM file format. Load or preprocess your
 data with your preferred tools, then pass the five required NumPy arrays to
 `train_som`:

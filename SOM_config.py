@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 @dataclass(frozen=True)
 class SOMConfig:
     file_name: str = "TaS2_055.3ds"
+    demo_file_name: str = "demo_stm.npz"
     geometry: str = "rectangular"   # Choose geometry of the network
     weighted: bool = True           # Choose if to weight the vectors by proximity to 0 bias
     zero_bias_width: float = 0.020  # Window of interest, in V
