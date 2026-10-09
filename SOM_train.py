@@ -1,3 +1,8 @@
+"""
+Train a SOM from STM data arrays.
+Edit "SOM_config.py" to adjust the map and training settings.
+"""
+
 import torch
 import os
 from pathlib import Path
@@ -35,14 +40,18 @@ def _validate_stm_data(topography, data, bias, x, y):
     return topography, data, bias, x, y
 
 
-def train_som(topography, data, bias, x, y, data_name="stm_dataset", save_images=False,
-              interactive_plots=False, n_superclusters=None):
-    """Train a SOM from an STM data cube and optional coordinate arrays.
+def train_som(
+    topography,
+    data,
+    bias,
+    x,
+    y,
+    data_name="stm_dataset",
+    save_images=False,
+    interactive_plots=False,
+    n_superclusters=None,
+):
 
-    ``data`` has shape ``(y_pixels, x_pixels, energy_points)``. ``topography``
-    has shape ``(y_pixels, x_pixels)``, while ``bias``, ``x``, and ``y`` are
-    one-dimensional arrays for the energy, x, and y axes respectively.
-    """
     topography, data, bias, x, y = _validate_stm_data(topography, data, bias, x, y)
     flat_unnorm_data = data.reshape(-1, data.shape[-1])
     standard_deviation = flat_unnorm_data.std(axis=1, keepdims=True)
@@ -103,11 +112,12 @@ def train_som(topography, data, bias, x, y, data_name="stm_dataset", save_images
     return som
 
 
-if __name__ == "__main__":
-    demo_path = Path(__file__).resolve().parent / "demo_data" / CONFIG.demo_file_name
-    with np.load(demo_path) as demo:
+def main():
+    data_path = Path(__file__).resolve().parent / CONFIG.data_path
+
+    with np.load(data_path) as datacube:
         topography, data, bias, x, y = (
-            demo[name] for name in ("topography", "data", "bias", "x", "y")
+            datacube[name] for name in ("topography", "data", "bias", "x", "y")
         )
         train_som(
             topography,
@@ -115,5 +125,12 @@ if __name__ == "__main__":
             bias,
             x,
             y,
-            data_name=demo_path.stem,
+            data_name=CONFIG.data_name,
+            save_images=CONFIG.save_imgs,
+            interactive_plots=CONFIG.interactive_plots,
+            n_superclusters=CONFIG.n_superclusters,
         )
+
+
+if __name__ == "__main__":
+    main()

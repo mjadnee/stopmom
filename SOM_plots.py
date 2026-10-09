@@ -367,6 +367,8 @@ def plot_som_error_maps(topo, data, bias, x, y, som, plot_context):
 def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclusters):
     """Explore real-space spectra and connected supercluster centroids by clicking maps."""
     n_nodes = som.map_h * som.map_w
+    max_clusters = min(n_nodes, 15)
+    n_superclusters = min(n_superclusters, max_clusters)
     zero_bias_index = np.abs(bias).argmin()
     zero_bias_slice = data[:, :, zero_bias_index]
     bias_mv = bias * 1e3
@@ -482,7 +484,6 @@ def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclust
     data_marker, = data_axis.plot([], [], "wo", markeredgecolor="black", markersize=7)
     som_marker, = som_axis.plot([], [], "wo", markeredgecolor="black", markersize=7)
 
-    max_clusters = min(n_nodes, max(30, n_superclusters))
     slider_axis = fig.add_axes([0.25, 0.05, 0.5, 0.025])
     cluster_slider = Slider(
         slider_axis,

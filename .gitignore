@@ -1,10 +1,13 @@
 # Generated training artifacts
 SOM_outputs/
+demo_data/demo_stm.npz
 
 # Local acquisition/loading script
 SOM_train_local.py
+SOM_config_local.py
 
 # Python environments and caches
 __pycache__/
 *.py[cod]
 .venv/
+demo_data/demo_stm.npz
