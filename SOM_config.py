@@ -37,7 +37,7 @@ class SOMConfig:
     weighted: bool = True           # Choose if to weight the vectors by proximity to 0 bias
     zero_bias_width: float = 0.020  # Window of interest, in Volts
     geometry: str = "rectangular"   # Choose geometry of the network (rectangular, cylindrical, toroidal)
-    map_shape: tuple[int, int] | None = None  # CHoose map shape or leave blank. Shape will calculate automatically.
+    map_shape: tuple[int, int] | None = None  # Choose map shape or leave blank. Shape will calculate automatically.
     seed: int = 42
 
     # Training parameters
