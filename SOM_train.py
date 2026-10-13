@@ -10,6 +10,7 @@ import numpy as np
 
 from SOM import SOM, load_som, save_som, build_som_grid
 from SOM_config import CONFIG
+from dataIO import load_data
 import SOM_plots as plots
 
 SOM_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SOM_outputs")
@@ -50,9 +51,13 @@ def train_som(
     save_images=False,
     interactive_plots=False,
     n_superclusters=None,
+    save_clusters=False,
 ):
 
     topography, data, bias, x, y = _validate_stm_data(topography, data, bias, x, y)
+    if save_clusters and n_superclusters is None:
+        raise ValueError("n_superclusters must be set when save_clusters is enabled")
+
     flat_unnorm_data = data.reshape(-1, data.shape[-1])
     standard_deviation = flat_unnorm_data.std(axis=1, keepdims=True)
     if np.any(standard_deviation == 0):
@@ -93,43 +98,81 @@ def train_som(
         save_som(som, som_path, hyperparameters=CONFIG.checkpoint_metadata())
         print(f"Model saved: {save_name}")
 
+    if save_clusters:
+        normalized_data = flat_data.reshape(data.shape)
+        _, cluster_ids = plots.get_supercluster_labels(normalized_data, som, n_superclusters)
+        cluster_dir = os.path.join(SOM_OUTPUT_DIR, data_name, "clusters")
+        os.makedirs(cluster_dir, exist_ok=True)
+        cluster_path = os.path.join(
+            cluster_dir,
+            f"{save_name}_{n_superclusters}_superclusters.npz",
+        )
+        np.savez_compressed(
+            cluster_path,
+            topography=topography,
+            data=data,
+            bias=bias,
+            x=x,
+            y=y,
+            supercluster_ids=cluster_ids,
+        )
+        print(f"Saved supercluster-labeled data to {cluster_path}")
+
     if save_images or interactive_plots:
         os.makedirs(figure_dir, exist_ok=True)
-        plot_context = {"figure_dir": figure_dir, "save_name": save_name, "save_images": save_images}
+        plot_context = {
+            "figure_dir": figure_dir,
+            "save_name": save_name,
+            "save_images": save_images,
+            "data_name": data_name,
+        }
         normalized_data = flat_data.reshape(data.shape)
         plots.plot_som_results(topography, normalized_data, bias, x, y, som, plot_context)
         plots.plot_som_error_maps(topography, normalized_data, bias, x, y, som, plot_context)
         if interactive_plots:
-            plots.plot_interactive_som_results(topography, normalized_data, bias, x, y, som)
+            plots.plot_interactive_som_results(topography, normalized_data, bias, x, y, som, plot_context=plot_context)
         if n_superclusters is not None:
             plots.plot_som_superclusters(
                 topography, normalized_data, bias, x, y, som, n_superclusters, plot_context
             )
             if interactive_plots:
                 plots.plot_interactive_som_superclusters(
-                    topography, normalized_data, bias, x, y, som, n_superclusters
+                    topography, normalized_data, bias, x, y, som, n_superclusters, plot_context=plot_context
                 )
     return som
 
 
 def main():
-    data_path = Path(__file__).resolve().parent / CONFIG.data_path
+    file_ext = CONFIG.file_type if CONFIG.file_type.startswith(".") else f".{CONFIG.file_type}"
+    file_name = f"{CONFIG.data_name}{file_ext}"
 
-    with np.load(data_path) as datacube:
-        topography, data, bias, x, y = (
-            datacube[name] for name in ("topography", "data", "bias", "x", "y")
-        )
-        train_som(
-            topography,
-            data,
-            bias,
-            x,
-            y,
-            data_name=CONFIG.data_name,
-            save_images=CONFIG.save_imgs,
-            interactive_plots=CONFIG.interactive_plots,
-            n_superclusters=CONFIG.n_superclusters,
-        )
+    if os.path.isabs(CONFIG.data_path):
+        full_file_path = os.path.join(CONFIG.data_path, file_name)
+    else:
+        full_file_path = str(Path(__file__).resolve().parent / CONFIG.data_path / file_name)
+
+    if file_ext == ".npz":
+        with np.load(full_file_path) as datacube:
+            topography, data, bias, x, y = (
+                datacube[name] for name in ("topography", "data", "bias", "x", "y")
+            )
+    elif file_ext == ".3ds":
+        topography, data, bias, x, y = load_data(full_file_path)
+    else:
+        raise ValueError(f"Unsupported file type '{CONFIG.file_type}'. Must be '.npz' or '.3ds'.")
+
+    train_som(
+        topography,
+        data,
+        bias,
+        x,
+        y,
+        data_name=CONFIG.data_name,
+        save_images=CONFIG.save_imgs,
+        interactive_plots=CONFIG.interactive_plots,
+        n_superclusters=CONFIG.n_superclusters,
+        save_clusters=CONFIG.save_clusters,
+    )
 
 
 if __name__ == "__main__":

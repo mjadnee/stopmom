@@ -19,15 +19,19 @@ from dataclasses import asdict, dataclass
 
 @dataclass(frozen=True)
 class SOMConfig:
-    data_path: str = "demo_data/demo_stm.npz"
-    data_name: str = "demo_stm"
+    data_path: str = r"C:\Users\maren\Documents\Yale\daNeto\STM_data"
+    data_name: str = "TaS2_055"
+    file_type: str= ".3ds"
 
-    save_imgs: bool = False
-    interactive_plots: bool = True
+    save_imgs: bool = False         # Export plots as pngs
+    interactive_plots: bool = True  # Trigger interactive plots
 
     # None skips any supercluster plots.
     # Select an integer value to set the number of superclusters. 
-    n_superclusters: int | None = 8
+    # This number is adjustable in interactive plots. 
+    n_superclusters: int | None = 3
+    save_clusters: bool = False      # Export original data and per-pixel supercluster IDs as .npz
+
 
     # SOM mapping parameters
     weighted: bool = True           # Choose if to weight the vectors by proximity to 0 bias
@@ -49,3 +53,7 @@ class SOMConfig:
 
 
 CONFIG = SOMConfig()
+
+if __name__ == "__main__":
+    from SOM_train import main
+    main()

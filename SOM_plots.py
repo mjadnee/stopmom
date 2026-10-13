@@ -7,7 +7,6 @@ from matplotlib.collections import PolyCollection
 from matplotlib.ticker import FormatStrFormatter
 from matplotlib.widgets import Slider
 
-
 from sklearn.cluster import AgglomerativeClustering
 from scipy.sparse import csr_matrix
 
@@ -57,6 +56,14 @@ def cluster_som_nodes(som, n_superclusters):
         connectivity=csr_matrix(neighbors),
     ).fit_predict(prototypes * feature_scale)
 
+def get_supercluster_labels(data, som, n_superclusters):
+    """Return SOM-node and real-space pixel supercluster IDs."""
+    supercluster_labels = cluster_som_nodes(som, n_superclusters)
+    bmus = som.predict(torch.from_numpy(data.reshape(-1, data.shape[-1])))
+    bmu_ids = bmus[:, 0].numpy() * som.map_w + bmus[:, 1].numpy()
+    real_space_labels = supercluster_labels[bmu_ids].reshape(data.shape[:2])
+    return supercluster_labels, real_space_labels
+
 def plot_bmu_samples(axis, bias, spectra, rng, color="tab:blue"):
     """Plot up to 100 transparent spectra assigned to a selected BMU."""
     if len(spectra) == 0:
@@ -102,6 +109,7 @@ def plot_som_results(topo, data, bias, x, y, som, plot_context):
     color_norm = mcolors.BoundaryNorm(np.arange(n_nodes + 1) - 0.5, n_nodes)
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
+    fig.suptitle(plot_context["data_name"])
     topo_min, topo_max = np.percentile(topo, (1, 99))
     image = axes[0, 0].pcolormesh(x_nm, y_nm, topo, cmap="gray", vmin=topo_min, vmax=topo_max, shading="auto")
     axes[0, 0].set_title("Topography")
@@ -161,10 +169,7 @@ def plot_som_results(topo, data, bias, x, y, som, plot_context):
 def plot_som_superclusters(topo, data, bias, x, y, som, n_superclusters, plot_context):
     """Plot real-space and SOM superclusters with their weighted variance explained."""
     n_nodes = som.map_h * som.map_w
-    supercluster_labels = cluster_som_nodes(som, n_superclusters)
-    bmus = som.predict(torch.from_numpy(data.reshape(-1, data.shape[-1])))
-    bmu_ids = bmus[:, 0].numpy() * som.map_w + bmus[:, 1].numpy()
-    real_space_labels = supercluster_labels[bmu_ids].reshape(data.shape[:2])
+    supercluster_labels, real_space_labels = get_supercluster_labels(data, som, n_superclusters)
     x_nm = x * 1e9
     y_nm = y * 1e9
     label_grid = supercluster_labels.reshape(som.map_h, som.map_w)
@@ -197,6 +202,7 @@ def plot_som_superclusters(topo, data, bias, x, y, som, n_superclusters, plot_co
     variance_explained = 1 - residual_variation / total_variation if total_variation > 0 else np.nan
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
+    fig.suptitle(plot_context["data_name"])
     topo_min, topo_max = np.percentile(topo, (1, 99))
     image = axes[0, 0].pcolormesh(x_nm, y_nm, topo, cmap="gray", vmin=topo_min, vmax=topo_max, shading="auto")
     axes[0, 0].set_title("Topography")
@@ -255,7 +261,108 @@ def plot_som_superclusters(topo, data, bias, x, y, som, n_superclusters, plot_co
     else:
         plt.show()
 
+    # Plot individual supercluster breakdown (one figure per supercluster)
+    plot_individual_superclusters(
+        topo, data, bias, x, y, real_space_labels, n_superclusters, palette, color_rank, counts, plot_context
+    )
+
     return supercluster_labels, counts
+
+
+def plot_individual_superclusters(
+    topo,
+    data,
+    bias,
+    x,
+    y,
+    real_space_labels,
+    n_superclusters,
+    palette,
+    color_rank,
+    counts,
+    plot_context,
+):
+    """Plot 3 subfigures for each supercluster: Topo + mask, dI/dV + mask, and sampled + mean spectra."""
+    x_nm = x * 1e9
+    y_nm = y * 1e9
+    bias_mv = bias * 1e3
+    zero_bias_index = np.abs(bias).argmin()
+    zero_bias_slice = data[:, :, zero_bias_index]
+    spectra = data.reshape(-1, data.shape[-1])
+    flat_labels = real_space_labels.ravel()
+
+    topo_min, topo_max = np.percentile(topo, (1, 99))
+    didv_min, didv_max = np.percentile(zero_bias_slice, (1, 99))
+
+    rng = np.random.default_rng(42)
+
+    # Order superclusters from largest to smallest to match the main supercluster overview
+    count_order = np.argsort(-counts, kind="stable")
+
+    for rank, cluster_id in enumerate(count_order):
+        cluster_mask = real_space_labels == cluster_id
+        cluster_color = palette[color_rank[cluster_id]]
+        cluster_spectra = spectra[flat_labels == cluster_id]
+        n_in_cluster = len(cluster_spectra)
+        if n_in_cluster == 0:
+            continue
+
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), constrained_layout=True)
+        fig.suptitle(plot_context["data_name"])
+
+        # 1. Topography with color mask overlay
+        axes[0].pcolormesh(x_nm, y_nm, topo, cmap="gray", vmin=topo_min, vmax=topo_max, shading="auto")
+        masked_topo = np.ma.masked_where(~cluster_mask, np.ones_like(cluster_mask, dtype=float))
+        axes[0].pcolormesh(
+            x_nm, y_nm, masked_topo,
+            cmap=mcolors.ListedColormap([cluster_color]),
+            vmin=0, vmax=1, alpha=0.55, shading="auto"
+        )
+        axes[0].set_title(f"Topography (Supercluster {rank + 1}/{n_superclusters})")
+        axes[0].set_xlabel("X (nm)")
+        axes[0].set_ylabel("Y (nm)")
+        axes[0].set_aspect("equal")
+
+        # 2. dI/dV at zero bias with color mask overlay
+        axes[1].pcolormesh(x_nm, y_nm, zero_bias_slice, cmap="gray", vmin=didv_min, vmax=didv_max, shading="auto")
+        masked_didv = np.ma.masked_where(~cluster_mask, np.ones_like(cluster_mask, dtype=float))
+        axes[1].pcolormesh(
+            x_nm, y_nm, masked_didv,
+            cmap=mcolors.ListedColormap([cluster_color]),
+            vmin=0, vmax=1, alpha=0.55, shading="auto"
+        )
+        axes[1].set_title(f"dI/dV at {bias_mv[zero_bias_index]:.1f} mV")
+        axes[1].set_xlabel("X (nm)")
+        axes[1].set_ylabel("Y (nm)")
+        axes[1].set_aspect("equal")
+
+        # 3. Spectrum plot: ~200 sampled spectra + mean spectrum
+        axes[2].set_title(f"Spectra (N={n_in_cluster} points)")
+        axes[2].set_xlabel("Bias (mV)")
+        axes[2].set_ylabel("Normalized dI/dV")
+        axes[2].grid(alpha=0.3)
+        axes[2].axvline(0, color="0.25", linewidth=1.25, zorder=0)
+
+        n_samples = min(200, n_in_cluster)
+        sample_indices = rng.choice(n_in_cluster, size=n_samples, replace=False)
+        sampled_spectra = cluster_spectra[sample_indices]
+
+        axes[2].plot(bias_mv, sampled_spectra.T, color=cluster_color, alpha=0.35, linewidth=0.75)
+        mean_spectrum = cluster_spectra.mean(axis=0)
+        axes[2].plot(bias_mv, mean_spectrum, color="black", linewidth=2.0, label="Cluster Mean")
+        axes[2].legend(loc="upper right")
+
+        save_path = os.path.join(
+            plot_context["figure_dir"],
+            f"{plot_context['save_name']}_supercluster_{rank + 1}_of_{n_superclusters}.png",
+        ) if plot_context["save_images"] else None
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+            print(f"Saved individual supercluster plot to {save_path}")
+        else:
+            plt.show()
 
 def plot_som_error_maps(topo, data, bias, x, y, som, plot_context):
     """Plot real-space and SOM-space relative QE with a map-wide QE/TE summary."""
@@ -294,6 +401,7 @@ def plot_som_error_maps(topo, data, bias, x, y, som, plot_context):
     mean_te = te_sums.sum().item() / len(samples)
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
+    fig.suptitle(plot_context["data_name"])
     topo_min, topo_max = np.percentile(topo, (1, 99))
     image = axes[0, 0].pcolormesh(x_nm, y_nm, topo, cmap="gray", vmin=topo_min, vmax=topo_max, shading="auto")
     axes[0, 0].set_title("Topography")
@@ -364,7 +472,7 @@ def plot_som_error_maps(topo, data, bias, x, y, som, plot_context):
 
 
 
-def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclusters):
+def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclusters, plot_context):
     """Explore real-space spectra and connected supercluster centroids by clicking maps."""
     n_nodes = som.map_h * som.map_w
     max_clusters = min(n_nodes, 15)
@@ -397,6 +505,7 @@ def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclust
 
     norm = mcolors.BoundaryNorm(np.arange(n_superclusters + 1) - 0.5, n_superclusters)
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig.suptitle(plot_context["data_name"])
     fig.subplots_adjust(left=0.08, right=0.96, bottom=0.15, top=0.94, wspace=0.3, hspace=0.3)
     topo_axis, data_axis, variance_axis, som_axis, spectrum_axis, u_matrix_axis = axes.ravel()
     topo_min, topo_max = np.percentile(topo, (1, 99))
@@ -571,7 +680,7 @@ def plot_interactive_som_superclusters(topo, data, bias, x, y, som, n_superclust
     cluster_slider.on_changed(update_clusters)
     plt.show()
 
-def plot_interactive_som_results(topo, data, bias, x, y, som):
+def plot_interactive_som_results(topo, data, bias, x, y, som, plot_context):
     """Explore normalized spectra and SOM prototypes by clicking either map."""
     zero_bias_index = np.abs(bias).argmin()
     zero_bias_slice = data[:, :, zero_bias_index]
@@ -587,6 +696,7 @@ def plot_interactive_som_results(topo, data, bias, x, y, som):
     )
 
     fig, axes = plt.subplots(2, 2, figsize=(18, 10), gridspec_kw={"width_ratios": [1.5, 1]})
+    fig.suptitle(plot_context["data_name"])
     fig.subplots_adjust(left=0.08, right=0.96, bottom=0.09, top=0.94, wspace=0.3, hspace=0.3)
     topo_axis, data_axis, som_axis, spectrum_axis = axes.ravel()
     topo_min, topo_max = np.percentile(topo, (1, 99))
@@ -702,4 +812,3 @@ def plot_interactive_som_results(topo, data, bias, x, y, som):
 
     fig.canvas.mpl_connect("button_press_event", on_click)
     plt.show()
-

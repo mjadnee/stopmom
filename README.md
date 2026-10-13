@@ -28,3 +28,9 @@ The required data cube and axes are:
 You can change parameters and interact with what plots are generated
 (options for static or interactive plots) and if plots are saved as pngs
 via the SOM_config file. 
+
+When `save_clusters` is enabled, the pipeline also writes a compressed `.npz`
+file under `SOM_outputs/<data_name>/clusters/`. It contains the original
+`topography`, `data`, `bias`, `x`, and `y` arrays, plus `supercluster_ids`, a
+2D `(y_pixels, x_pixels)` array assigning a zero-based supercluster ID to each
+pixel's spectrum. `n_superclusters` must be set to enable this export.
