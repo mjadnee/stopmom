@@ -42,8 +42,11 @@ class SOM:
 
     def init_pca(self, X):
         """Lay the map out along the top principal components of X."""
-        _, S, V = torch.pca_lowrank(X, q=3, center=False)  # X is already zero-mean
-        lam = S**2 / (len(X) - 1)  # variance along PC1..PC3
+        if self.geometry == "toroidal" and self.Ne < 4:
+            raise ValueError("toroidal PCA initialization requires Ne >= 4")
+        q = 4 if self.geometry == "toroidal" else 3
+        _, S, V = torch.pca_lowrank(X, q=q, center=False)  # X is already zero-mean
+        lam = S**2 / (len(X) - 1)  # variance along the selected PCs
         x, y = self.xy[:, 0].to(X.device), self.xy[:, 1].to(X.device)
         a = 2 * (x - x.min()) / (x.max() - x.min()) - 1  # along map_w, in [-1, 1]
         b = 2 * y / y.max() - 1  # along map_h, in [-1, 1]
@@ -55,14 +58,13 @@ class SOM:
                                 (2 * lam[1]).sqrt() * t.sin(),
                                 (3 * lam[2]).sqrt() * b], 1)
         elif self.geometry == "toroidal":
-            # Two periodic axes embedded as a torus in the first three PCs
+            # Independent periodic axes avoid the ring torus's inner/outer rim.
             u = 2 * math.pi * x / self.map_w
             v = 2 * math.pi * y / (self.map_h * math.sqrt(3) / 2)
-            major_radius = (2 * lam[0]).sqrt()
-            minor_radius = (2 * lam[1]).sqrt()
-            coef = torch.stack([(major_radius + minor_radius * v.cos()) * u.cos(),
-                                (major_radius + minor_radius * v.cos()) * u.sin(),
-                                minor_radius * v.sin()], 1)
+            coef = torch.stack([(2 * lam[0]).sqrt() * u.cos(),
+                                (2 * lam[1]).sqrt() * u.sin(),
+                                (2 * lam[2]).sqrt() * v.cos(),
+                                (2 * lam[3]).sqrt() * v.sin()], 1)
         else:
             # Plane spanned by PC1 (along map_w) and PC2 (along map_h)
             coef = torch.stack([(3 * lam[0]).sqrt() * a,
@@ -146,12 +148,19 @@ def build_som_grid(FLAT_DATA, geometry="rectangular"):
     N, D = FLAT_DATA.shape
     n = int(3 * np.sqrt(N))
 
-    # Find eigenvalues of PCA covariance on a subsample:
-    l1, l2, l3 = eigh(FLAT_DATA.T @ FLAT_DATA,
+    q = 4 if geometry == "toroidal" else 3
+    if geometry == "toroidal" and D < 4:
+        raise ValueError("toroidal grid sizing requires Ne >= 4")
+    # Match the aspect ratio to the variance along each map axis.
+    eigenvalues = eigh(FLAT_DATA.T @ FLAT_DATA,
                         eigvals_only = True,
-                        subset_by_index=[D-3, D-1])[::-1]
+                        subset_by_index=[D-q, D-1])[::-1]
+    l1, l2, l3 = eigenvalues[:3]
 
-    if geometry in {'rectangular', 'toroidal'}:
+    if geometry == 'toroidal':
+        l4 = eigenvalues[3]
+        ratio = np.sqrt((l1 + l2) / (l3 + l4))
+    elif geometry == 'rectangular':
         ratio = np.sqrt(l1 / l2)
     elif geometry == 'cylindrical':
         ratio = 2 * np.pi * np.sqrt((l1 + l2) / (12 * l3))
@@ -181,4 +190,3 @@ def load_som(filename, device="cpu"):
     som.weights = s["weights"].to(device)
     print(f"SOM loaded from {filename}")
     return som
-

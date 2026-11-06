@@ -7,7 +7,7 @@ import torch
 import os
 from pathlib import Path
 import numpy as np
-
+import matplotlib.colors as mcolors
 from SOM import SOM, load_som, save_som, build_som_grid
 from SOM_config import CONFIG
 from dataIO import load_data
@@ -52,6 +52,7 @@ def train_som(
     interactive_plots=False,
     n_superclusters=None,
     save_clusters=False,
+    show_plots=True,
 ):
 
     topography, data, bias, x, y = _validate_stm_data(topography, data, bias, x, y)
@@ -101,11 +102,15 @@ def train_som(
     if save_clusters:
         normalized_data = flat_data.reshape(data.shape)
         _, cluster_ids = plots.get_supercluster_labels(normalized_data, som, n_superclusters)
+        # Same color assignment as the plots: row i is the color of supercluster ID i.
+        palette, color_rank = plots.supercluster_palette(np.bincount(cluster_ids.ravel(), minlength=n_superclusters))
+        supercluster_colors = palette[color_rank]
+        supercluster_color_hex = np.array([mcolors.to_hex(color).upper() for color in supercluster_colors])
         cluster_dir = os.path.join(SOM_OUTPUT_DIR, data_name, "clusters")
         os.makedirs(cluster_dir, exist_ok=True)
         cluster_path = os.path.join(
             cluster_dir,
-            f"{save_name}_{n_superclusters}_superclusters.npz",
+            f"{save_name}_{CONFIG.linkage}_{n_superclusters}_superclusters.npz",
         )
         np.savez_compressed(
             cluster_path,
@@ -115,26 +120,31 @@ def train_som(
             x=x,
             y=y,
             supercluster_ids=cluster_ids,
+            supercluster_colors=supercluster_colors,
+            supercluster_color_hex=supercluster_color_hex,
         )
         print(f"Saved supercluster-labeled data to {cluster_path}")
 
-    if save_images or interactive_plots:
+    if save_images or show_plots or interactive_plots:
         os.makedirs(figure_dir, exist_ok=True)
         plot_context = {
             "figure_dir": figure_dir,
-            "save_name": save_name,
+            "save_name": f"{save_name}_{CONFIG.linkage}",
             "save_images": save_images,
+            "show_plots": show_plots,
             "data_name": data_name,
         }
         normalized_data = flat_data.reshape(data.shape)
-        plots.plot_som_results(topography, normalized_data, bias, x, y, som, plot_context)
-        plots.plot_som_error_maps(topography, normalized_data, bias, x, y, som, plot_context)
+        if save_images or show_plots:
+            plots.plot_som_results(topography, normalized_data, bias, x, y, som, plot_context)
+            plots.plot_som_error_maps(topography, normalized_data, bias, x, y, som, plot_context)
         if interactive_plots:
             plots.plot_interactive_som_results(topography, normalized_data, bias, x, y, som, plot_context=plot_context)
         if n_superclusters is not None:
-            plots.plot_som_superclusters(
-                topography, normalized_data, bias, x, y, som, n_superclusters, plot_context
-            )
+            if save_images or show_plots:
+                plots.plot_som_superclusters(
+                    topography, normalized_data, bias, x, y, som, n_superclusters, plot_context
+                )
             if interactive_plots:
                 plots.plot_interactive_som_superclusters(
                     topography, normalized_data, bias, x, y, som, n_superclusters, plot_context=plot_context
@@ -172,6 +182,7 @@ def main():
         interactive_plots=CONFIG.interactive_plots,
         n_superclusters=CONFIG.n_superclusters,
         save_clusters=CONFIG.save_clusters,
+        show_plots=CONFIG.show_plots,
     )
 
 
